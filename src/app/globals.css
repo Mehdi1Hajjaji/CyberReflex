@@ -1,26 +1,190 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #041118;
+  --foreground: #effff8;
+  --muted: #9ac0c1;
+  --card: rgba(7, 22, 29, 0.76);
+  --card-strong: rgba(8, 28, 36, 0.92);
+  --line: rgba(112, 249, 220, 0.16);
+  --accent: #2cf1c1;
+  --accent-2: #6ac8ff;
+  --success: #39d98a;
+  --warning: #f8cf4c;
+  --danger: #ff7a7a;
+  --shadow: 0 24px 120px rgba(0, 0, 0, 0.4);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-card-strong: var(--card-strong);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--line);
+}
+
+html {
+  background:
+    radial-gradient(circle at top, rgba(44, 241, 193, 0.18), transparent 28%),
+    radial-gradient(circle at 80% 20%, rgba(106, 200, 255, 0.16), transparent 24%),
+    linear-gradient(180deg, #06161f 0%, #041118 52%, #030c12 100%);
 }
 
 body {
-  background: var(--background);
+  background: transparent;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-space-grotesk), sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(112, 249, 220, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(112, 249, 220, 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, transparent 0%, rgba(44, 241, 193, 0.08) 100%);
+  background-size:
+    110px 110px,
+    110px 110px,
+    100% 100%;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95), transparent 92%);
+  opacity: 0.32;
+  animation: grid-drift 18s linear infinite;
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+::selection {
+  background: rgba(44, 241, 193, 0.25);
+  color: var(--foreground);
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(9, 28, 36, 0.88), rgba(5, 19, 25, 0.82));
+  border: 1px solid rgba(120, 246, 220, 0.14);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.terminal-edge {
+  position: relative;
+  overflow: hidden;
+}
+
+.terminal-edge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(44, 241, 193, 0.7),
+    transparent 35%,
+    transparent 65%,
+    rgba(106, 200, 255, 0.45)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.scan-glow {
+  box-shadow:
+    0 0 0 1px rgba(44, 241, 193, 0.12),
+    0 0 0 8px rgba(44, 241, 193, 0.03),
+    0 20px 80px rgba(44, 241, 193, 0.08);
+}
+
+.reveal-up {
+  animation: reveal-up 720ms ease both;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.mono-digits {
+  font-feature-settings: "tnum" 1;
+}
+
+.scroll-shell {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(44, 241, 193, 0.35) transparent;
+}
+
+.scroll-shell::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scroll-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-shell::-webkit-scrollbar-thumb {
+  background: rgba(44, 241, 193, 0.3);
+  border-radius: 999px;
+}
+
+@keyframes grid-drift {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(110px);
+  }
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

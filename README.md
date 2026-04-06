@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CyberReflex
 
-## Getting Started
+CyberReflex is a Next.js security scanner for public websites. Users submit a URL and receive a readable report covering TLS, HTTP security headers, DNS posture, redirect hygiene, cookie flags, technology disclosure, exposed files, and basic public port exposure.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 App Router
+- Tailwind CSS v4
+- Prisma 7
+- PostgreSQL / Supabase-ready schema
+- Optional OpenAI summary layer
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy the environment template and fill in the values you have:
+
+```bash
+cp .env.example .env
+```
+
+3. Generate the Prisma client:
+
+```bash
+npx prisma generate
+```
+
+4. Start development:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`
+  Runtime Prisma connection. For Supabase, use the pooled Supavisor transaction URL on port `6543` with `?pgbouncer=true`.
+- `DIRECT_URL`
+  Direct database URL for Prisma CLI commands such as `prisma generate`, `prisma db push`, and migrations.
+- `NEXT_PUBLIC_SUPABASE_URL`
+  Optional for the current MVP. Only needed when you start using Supabase auth or client-side features.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+  Optional for the current MVP. Only needed when you start using Supabase auth or client-side features.
+- `OPENAI_API_KEY`
+  Optional. If omitted, CyberReflex falls back to a rules-based summary.
+- `OPENAI_MODEL`
+  Optional. Defaults to `gpt-4o-mini`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Prisma notes
 
-## Learn More
+- Prisma 7 now reads the direct datasource URL from `prisma.config.ts`.
+- The generated client lives in `src/generated/prisma`.
+- Runtime queries use `DATABASE_URL` through `@prisma/adapter-pg`.
+- Prisma CLI commands use `DIRECT_URL`.
+- The app only initializes Prisma when `DATABASE_URL` is present, so scanning still works without a database.
 
-To learn more about Next.js, take a look at the following resources:
+## Scan coverage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- SSL / TLS certificate and protocol checks
+- HTTP security header grading
+- SPF / DMARC / nameserver checks
+- Best-effort public port probing
+- Technology disclosure and framework fingerprinting
+- Cookie flag analysis
+- Exposed file and debug endpoint probes
+- Redirect chain tracing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Validation
 
-## Deploy on Vercel
+The current build has been validated with:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npx prisma generate
+npm run build
+```
