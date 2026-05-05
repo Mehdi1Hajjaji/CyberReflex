@@ -25,10 +25,11 @@ model Scan {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  plan      String   @default("free")
-  scans     Scan[]
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?  @db.Text
+  plan         String   @default("free")
+  scans        Scan[]
+  createdAt    DateTime @default(now())
 }

@@ -8,6 +8,9 @@ import {
   ScanSearch,
   Shield,
 } from "lucide-react";
+import Link from "next/link";
+import { auth } from "@/auth";
+import { signOutAction } from "@/app/auth-actions";
 import { ScannerExperience } from "@/components/scanner-experience";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,7 +84,9 @@ const checks = [
   },
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
+
   return (
     <main className="relative flex-1 overflow-hidden">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-20 px-6 py-8 lg:px-10 lg:py-10">
@@ -110,6 +115,22 @@ export default function Home() {
             <a href="#why" className="hover:text-foreground">
               Why CyberReflex
             </a>
+            {session?.user ? (
+              <>
+                <Link href="/scans" className="hover:text-foreground">
+                  My Scans
+                </Link>
+                <form action={signOutAction}>
+                  <button type="submit" className="hover:text-foreground">
+                    Sign out
+                  </button>
+                </form>
+              </>
+            ) : (
+              <Link href="/signin" className="hover:text-foreground">
+                Sign in
+              </Link>
+            )}
           </nav>
         </header>
 
