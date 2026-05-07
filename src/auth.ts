@@ -78,6 +78,13 @@ export const authConfig = {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      async profile(profile) {
+        return toOAuthUser({
+          email: profile.email,
+          name: profile.name,
+          image: profile.picture,
+        });
+      },
     }),
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID,
@@ -111,57 +118,25 @@ export const authConfig = {
           return profile;
         },
       },
+      async profile(profile) {
+        return toOAuthUser({
+          email: profile.email,
+          name: profile.name ?? profile.login,
+          image: profile.avatar_url,
+        });
+      },
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
+    signIn({ user, account }) {
       if (!account || account.provider === "credentials") {
         return true;
       }
 
-      const email = normalizeEmail(user.email ?? getProfileEmail(profile));
-
-      if (!email) {
-        return false;
-      }
-
-      if (account.provider === "google" && !isGoogleEmailVerified(profile)) {
-        return false;
-      }
-
-      const storedUser = await findOrCreateOAuthUser({
-        email,
-        name: user.name ?? getProfileName(profile),
-      });
-
-      if (!storedUser) {
-        return false;
-      }
-
-      user.id = storedUser.id;
-      user.email = storedUser.email;
-      user.name = storedUser.name ?? user.name;
-
-      return true;
+      return Boolean(user.id && user.email);
     },
-    async jwt({ token, user, account, profile }) {
-      if (account && account.provider !== "credentials") {
-        const email = normalizeEmail(user?.email ?? token.email ?? getProfileEmail(profile));
-        const storedUser = email
-          ? await findOrCreateOAuthUser({
-              email,
-              name: user?.name ?? token.name ?? getProfileName(profile),
-            })
-          : null;
-
-        if (!storedUser) {
-          return null;
-        }
-
-        token.id = storedUser.id;
-        token.email = storedUser.email;
-        token.name = storedUser.name ?? token.name;
-      } else if (user?.id) {
+    jwt({ token, user }) {
+      if (user?.id) {
         token.id = user.id;
       }
 
@@ -196,6 +171,9 @@ type StoredAuthUser = {
 
 type GitHubProfile = {
   email: string | null;
+  login?: string | null;
+  name?: string | null;
+  avatar_url?: string | null;
 };
 
 type GitHubEmail = {
@@ -203,6 +181,34 @@ type GitHubEmail = {
   primary: boolean;
   verified: boolean;
 };
+
+async function toOAuthUser(input: {
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+}) {
+  const email = normalizeEmail(input.email);
+
+  if (!email) {
+    throw new Error("OAuth provider did not return a usable email address.");
+  }
+
+  const storedUser = await findOrCreateOAuthUser({
+    email,
+    name: input.name,
+  });
+
+  if (!storedUser) {
+    throw new Error("OAuth user could not be stored.");
+  }
+
+  return {
+    id: storedUser.id,
+    email: storedUser.email,
+    name: storedUser.name ?? input.name ?? null,
+    image: input.image ?? null,
+  };
+}
 
 async function findOrCreateOAuthUser(input: {
   email: string;
@@ -239,26 +245,4 @@ function normalizeEmail(email: unknown) {
   return typeof email === "string" && email.trim()
     ? email.trim().toLowerCase()
     : null;
-}
-
-function getProfileEmail(profile: unknown) {
-  return typeof profile === "object" && profile && "email" in profile
-    ? profile.email
-    : null;
-}
-
-function getProfileName(profile: unknown) {
-  if (!profile || typeof profile !== "object" || !("name" in profile)) {
-    return null;
-  }
-
-  return typeof profile.name === "string" ? profile.name : null;
-}
-
-function isGoogleEmailVerified(profile: unknown) {
-  if (!profile || typeof profile !== "object" || !("email_verified" in profile)) {
-    return false;
-  }
-
-  return profile.email_verified === true;
 }
