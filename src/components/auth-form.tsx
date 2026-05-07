@@ -12,12 +12,27 @@ type AuthFormProps = {
   mode: "signin" | "signup";
 };
 
+type OAuthProvider = "google" | "github";
+
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/scans";
   const [error, setError] = useState<string | null>(null);
+  const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  async function handleOAuthSignIn(provider: OAuthProvider) {
+    setError(null);
+    setOauthProvider(provider);
+
+    try {
+      await signIn(provider, { callbackUrl });
+    } catch {
+      setError("OAuth sign-in could not be started.");
+      setOauthProvider(null);
+    }
+  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,6 +96,41 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
+      {mode === "signin" ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              disabled={isPending || Boolean(oauthProvider)}
+              onClick={() => void handleOAuthSignIn("google")}
+            >
+              <span className="font-semibold">G</span>
+              {oauthProvider === "google" ? "Connecting..." : "Google"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              disabled={isPending || Boolean(oauthProvider)}
+              onClick={() => void handleOAuthSignIn("github")}
+            >
+              <span className="font-semibold">GH</span>
+              {oauthProvider === "github" ? "Connecting..." : "GitHub"}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3 py-1">
+            <div className="h-px flex-1 bg-line" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted">
+              or
+            </span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+        </>
+      ) : null}
+
       {mode === "signup" ? (
         <div className="space-y-2">
           <label className="font-mono text-xs uppercase tracking-[0.24em] text-muted">
@@ -146,4 +196,3 @@ export function AuthForm({ mode }: AuthFormProps) {
     </form>
   );
 }
-
