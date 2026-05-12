@@ -3,6 +3,7 @@ import { defineConfig } from "prisma/config";
 
 const SUPABASE_PROJECT_REF = "hrjdwtaccgthqzwrnkqt";
 const DIRECT_HOST = `db.${SUPABASE_PROJECT_REF}.supabase.co`;
+const DATABASE_NAME = "postgres";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -30,7 +31,7 @@ function getRequiredDirectUrl() {
       throw new Error("DIRECT_URL must use postgresql://.");
     }
 
-    if (!parsed.password || parsed.password === "[YOUR-PASSWORD]") {
+    if (!parsed.password || isPlaceholderValue(parsed.password)) {
       throw new Error("DIRECT_URL is missing the database password.");
     }
 
@@ -48,6 +49,10 @@ function getRequiredDirectUrl() {
       throw new Error("DIRECT_URL must use port 5432.");
     }
 
+    if (parsed.pathname.replace(/^\//, "") !== DATABASE_NAME) {
+      throw new Error(`DIRECT_URL must use the ${DATABASE_NAME} database.`);
+    }
+
     if (parsed.searchParams.get("pgbouncer") === "true") {
       throw new Error("DIRECT_URL must not include pgbouncer=true.");
     }
@@ -62,4 +67,24 @@ function getRequiredDirectUrl() {
   }
 
   return directUrl;
+}
+
+function isPlaceholderValue(value: string) {
+  const decodedValue = safeDecodeURIComponent(value);
+
+  return (
+    decodedValue === "[YOUR-PASSWORD]" ||
+    decodedValue.startsWith("<") ||
+    decodedValue.endsWith(">") ||
+    decodedValue.startsWith("[") ||
+    decodedValue.endsWith("]")
+  );
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

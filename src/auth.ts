@@ -12,11 +12,15 @@ const googleClientId = getEnv("GOOGLE_CLIENT_ID", "AUTH_GOOGLE_ID");
 const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET", "AUTH_GOOGLE_SECRET");
 const githubClientId = getEnv("GITHUB_CLIENT_ID", "AUTH_GITHUB_ID");
 const githubClientSecret = getEnv("GITHUB_CLIENT_SECRET", "AUTH_GITHUB_SECRET");
+const authSecret = getEnv("AUTH_SECRET", "NEXTAUTH_SECRET");
+const authUrl = getEnv("AUTH_URL", "NEXTAUTH_URL");
 const authAdapter = getAuthAdapter();
 
+applyAuthEnvAliases();
+
 export const enabledOAuthProviders = {
-  google: Boolean(googleClientId && googleClientSecret && authAdapter),
-  github: Boolean(githubClientId && githubClientSecret && authAdapter),
+  google: Boolean(googleClientId && googleClientSecret),
+  github: Boolean(githubClientId && githubClientSecret),
 };
 
 const credentialsSchema = z.object({
@@ -174,7 +178,8 @@ if (enabledOAuthProviders.github) {
 
 export const authConfig = {
   adapter: authAdapter,
-  secret: getEnv("AUTH_SECRET", "NEXTAUTH_SECRET"),
+  secret: authSecret,
+  trustHost: getBooleanEnv("AUTH_TRUST_HOST") || Boolean(process.env.VERCEL),
   pages: {
     signIn: "/signin",
   },
@@ -183,6 +188,16 @@ export const authConfig = {
   },
   providers,
   callbacks: {
+    signIn({ account }) {
+      if (account?.provider && account.provider !== "credentials" && !authAdapter) {
+        console.error(
+          `${account.provider} OAuth sign-in blocked because the Prisma auth adapter is unavailable.`,
+        );
+        return "/signin?error=Configuration&code=auth_storage_unavailable";
+      }
+
+      return true;
+    },
     jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
@@ -241,7 +256,7 @@ function getEnv(...names: string[]) {
   for (const name of names) {
     const value = process.env[name]?.trim();
 
-    if (value) {
+    if (value && !isPlaceholderValue(value)) {
       return value;
     }
   }
@@ -265,6 +280,30 @@ function getAuthAdapter() {
 
   return PrismaAdapter(
     prisma as unknown as Parameters<typeof PrismaAdapter>[0],
+  );
+}
+
+function applyAuthEnvAliases() {
+  if (authSecret && !process.env.AUTH_SECRET) {
+    process.env.AUTH_SECRET = authSecret;
+  }
+
+  if (authUrl && !process.env.AUTH_URL) {
+    process.env.AUTH_URL = authUrl;
+  }
+}
+
+function getBooleanEnv(name: string) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function isPlaceholderValue(value: string) {
+  return (
+    value.startsWith("<") ||
+    value.endsWith(">") ||
+    value.startsWith("[") ||
+    value.endsWith("]")
   );
 }
 

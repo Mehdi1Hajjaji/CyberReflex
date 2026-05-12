@@ -1,12 +1,13 @@
 import { Shield } from "lucide-react";
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { enabledOAuthProviders } from "@/auth";
 import { AuthForm } from "@/components/auth-form";
 import { Card, CardContent } from "@/components/ui/card";
 
-export const dynamic = "force-dynamic";
+export default async function SignInPage() {
+  await connection();
 
-export default function SignInPage() {
   return (
     <main className="relative z-10 flex min-h-screen items-center justify-center px-5 py-10">
       <Card className="glass-panel terminal-edge w-full max-w-md">

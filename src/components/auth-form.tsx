@@ -241,6 +241,10 @@ function authErrorMessageFromCode(code?: string | null, error?: string | null) {
     return "OAuth sign-in could not be completed. Check that the provider account has a verified email address.";
   }
 
+  if (error === "AccessDenied") {
+    return "OAuth sign-in is not available with the current server configuration.";
+  }
+
   if (error === "OAuthSignInError" || error === "Configuration") {
     return "There is a problem with the server authentication configuration.";
   }

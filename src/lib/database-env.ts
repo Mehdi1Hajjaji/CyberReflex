@@ -1,6 +1,7 @@
 const SUPABASE_PROJECT_REF = "hrjdwtaccgthqzwrnkqt";
 const RUNTIME_POOLER_HOST = "aws-1-eu-west-3.pooler.supabase.com";
 const DIRECT_HOST = `db.${SUPABASE_PROJECT_REF}.supabase.co`;
+const DATABASE_NAME = "postgres";
 
 export type DatabaseEnvIssue = {
   variable: "DATABASE_URL" | "DIRECT_URL";
@@ -39,7 +40,9 @@ export function getRuntimeDatabaseUrl() {
     expectedHost: RUNTIME_POOLER_HOST,
     expectedUsername: `postgres.${SUPABASE_PROJECT_REF}`,
     expectedPort: "6543",
+    expectedDatabase: DATABASE_NAME,
     requirePgbouncer: true,
+    expectedConnectionLimit: "1",
   });
 
   if (!details.valid) {
@@ -59,7 +62,9 @@ export function validateDatabaseEnvironment() {
     expectedHost: RUNTIME_POOLER_HOST,
     expectedUsername: `postgres.${SUPABASE_PROJECT_REF}`,
     expectedPort: "6543",
+    expectedDatabase: DATABASE_NAME,
     requirePgbouncer: true,
+    expectedConnectionLimit: "1",
   });
   const direct = validateDatabaseUrl("DIRECT_URL", process.env.DIRECT_URL, {
     required: true,
@@ -67,6 +72,7 @@ export function validateDatabaseEnvironment() {
     expectedHost: DIRECT_HOST,
     expectedUsername: "postgres",
     expectedPort: "5432",
+    expectedDatabase: DATABASE_NAME,
     requirePgbouncer: false,
   });
   const issues = [...runtime.issues, ...direct.issues];
@@ -89,7 +95,9 @@ function validateDatabaseUrl(
     expectedHost: string;
     expectedUsername: string;
     expectedPort: string;
+    expectedDatabase: string;
     requirePgbouncer: boolean;
+    expectedConnectionLimit?: string;
   },
 ): DatabaseEnvDetails {
   const issues: DatabaseEnvIssue[] = [];
@@ -173,12 +181,23 @@ function validateDatabaseUrl(
     });
   }
 
-  if (!parsed.password || parsed.password === "[YOUR-PASSWORD]") {
+  if (!parsed.password || isPlaceholderValue(parsed.password)) {
     issues.push({
       variable,
       code: "missing_password",
       message: `${variable} is missing the database password.`,
-      hint: "Replace [YOUR-PASSWORD] with the Supabase database password. URL-encode it if it contains reserved URL characters.",
+      hint: "Replace the password placeholder with the Supabase database password. URL-encode it if it contains reserved URL characters.",
+    });
+  }
+
+  const database = parsed.pathname.replace(/^\//, "");
+
+  if (database !== options.expectedDatabase) {
+    issues.push({
+      variable,
+      code: "unexpected_database",
+      message: `${variable} points to database ${database || "(missing)"}, not the expected database.`,
+      hint: `Expected database: ${options.expectedDatabase}.`,
     });
   }
 
@@ -188,6 +207,18 @@ function validateDatabaseUrl(
       code: "missing_pgbouncer",
       message: `${variable} must include pgbouncer=true for the transaction pooler.`,
       hint: "Append ?pgbouncer=true, or &pgbouncer=true if the URL already has query parameters.",
+    });
+  }
+
+  if (
+    options.expectedConnectionLimit &&
+    parsed.searchParams.get("connection_limit") !== options.expectedConnectionLimit
+  ) {
+    issues.push({
+      variable,
+      code: "unexpected_connection_limit",
+      message: `${variable} must include connection_limit=${options.expectedConnectionLimit} for serverless runtime connections.`,
+      hint: `Append connection_limit=${options.expectedConnectionLimit}, or set it to ${options.expectedConnectionLimit} if the URL already has this query parameter.`,
     });
   }
 
@@ -207,10 +238,29 @@ function validateDatabaseUrl(
     host: parsed.hostname,
     port: parsed.port,
     username: parsed.username,
-    database: parsed.pathname.replace(/^\//, ""),
+    database,
     usesPgbouncer: parsed.searchParams.get("pgbouncer") === "true",
     expectedUse: options.expectedUse,
     issues,
   };
 }
 
+function isPlaceholderValue(value: string) {
+  const decodedValue = safeDecodeURIComponent(value);
+
+  return (
+    decodedValue === "[YOUR-PASSWORD]" ||
+    decodedValue.startsWith("<") ||
+    decodedValue.endsWith(">") ||
+    decodedValue.startsWith("[") ||
+    decodedValue.endsWith("]")
+  );
+}
+
+function safeDecodeURIComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
