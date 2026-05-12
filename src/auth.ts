@@ -1,43 +1,60 @@
-import NextAuth, { type NextAuthConfig } from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import NextAuth, { CredentialsSignin, type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import { compare } from "bcryptjs";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { DatabaseEnvError } from "@/lib/database-env";
 import { getPrisma } from "@/lib/prisma";
+
+const googleClientId = getEnv("GOOGLE_CLIENT_ID", "AUTH_GOOGLE_ID");
+const googleClientSecret = getEnv("GOOGLE_CLIENT_SECRET", "AUTH_GOOGLE_SECRET");
+const githubClientId = getEnv("GITHUB_CLIENT_ID", "AUTH_GITHUB_ID");
+const githubClientSecret = getEnv("GITHUB_CLIENT_SECRET", "AUTH_GITHUB_SECRET");
+const authAdapter = getAuthAdapter();
+
+export const enabledOAuthProviders = {
+  google: Boolean(googleClientId && googleClientSecret && authAdapter),
+  github: Boolean(githubClientId && githubClientSecret && authAdapter),
+};
 
 const credentialsSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
   password: z.string().min(8),
 });
 
-export const authConfig = {
-  pages: {
-    signIn: "/signin",
-  },
-  session: {
-    strategy: "jwt",
-  },
-  providers: [
-    Credentials({
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const parsed = credentialsSchema.safeParse(credentials);
+const providers: NextAuthConfig["providers"] = [
+  Credentials({
+    credentials: {
+      email: { label: "Email", type: "email" },
+      password: { label: "Password", type: "password" },
+    },
+    async authorize(credentials) {
+      const parsed = credentialsSchema.safeParse(credentials);
 
-        if (!parsed.success) {
-          return null;
-        }
+      if (!parsed.success) {
+        return null;
+      }
 
-        const prisma = getPrisma();
-        if (!prisma) {
-          return null;
-        }
+      let prisma;
 
-        const users = await withTimeout(
+      try {
+        prisma = getPrisma();
+      } catch (error) {
+        console.error("Credentials auth database configuration failed:", formatAuthError(error));
+        throw new AuthStorageUnavailable();
+      }
+
+      if (!prisma) {
+        console.error("Credentials auth database client is unavailable.");
+        throw new AuthStorageUnavailable();
+      }
+
+      let users;
+
+      try {
+        users = await withTimeout(
           prisma.$queryRaw<
             Array<{
               id: string;
@@ -52,43 +69,60 @@ export const authConfig = {
             LIMIT 1
           `,
           10_000,
-        ).catch(() => []);
-        const user = users[0];
-
-        if (!user?.passwordHash) {
-          return null;
-        }
-
-        const passwordMatches = await compare(
-          parsed.data.password,
-          user.passwordHash,
         );
+      } catch (error) {
+        console.error("Credentials auth lookup failed:", formatAuthError(error));
+        throw new AuthStorageUnavailable();
+      }
 
-        if (!passwordMatches) {
-          return null;
-        }
+      const user = users[0];
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        };
-      },
-    }),
+      if (!user?.passwordHash) {
+        return null;
+      }
+
+      const passwordMatches = await compare(
+        parsed.data.password,
+        user.passwordHash,
+      );
+
+      if (!passwordMatches) {
+        return null;
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      };
+    },
+  }),
+];
+
+if (enabledOAuthProviders.google) {
+  providers.push(
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      async profile(profile) {
-        return toOAuthUser({
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      allowDangerousEmailAccountLinking: true,
+      profile(profile) {
+        return {
+          id: profile.sub,
           email: profile.email,
           name: profile.name,
           image: profile.picture,
-        });
+        };
       },
     }),
+  );
+}
+
+if (enabledOAuthProviders.github) {
+  providers.push(
     GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET,
+      clientId: githubClientId,
+      clientSecret: githubClientSecret,
+      allowDangerousEmailAccountLinking: true,
       userinfo: {
         url: "https://api.github.com/user",
         async request({ tokens }: { tokens: { access_token?: string } }) {
@@ -113,28 +147,42 @@ export const authConfig = {
             emails.find((email) => email.verified && email.email === profile.email) ??
             emails.find((email) => email.verified);
 
-          profile.email = verifiedEmail?.email ?? null;
+          profile.email = verifiedEmail?.email ?? profile.email ?? null;
 
           return profile;
         },
       },
-      async profile(profile) {
-        return toOAuthUser({
+      profile(profile) {
+        if (!profile.email) {
+          console.error(
+            "GitHub OAuth profile did not include a verified email address.",
+            { id: profile.id, login: profile.login },
+          );
+          throw new Error("GitHub did not provide a verified email address.");
+        }
+
+        return {
+          id: String(profile.id ?? profile.login),
           email: profile.email,
           name: profile.name ?? profile.login,
           image: profile.avatar_url,
-        });
+        };
       },
     }),
-  ],
-  callbacks: {
-    signIn({ user, account }) {
-      if (!account || account.provider === "credentials") {
-        return true;
-      }
+  );
+}
 
-      return Boolean(user.id && user.email);
-    },
+export const authConfig = {
+  adapter: authAdapter,
+  secret: getEnv("AUTH_SECRET", "NEXTAUTH_SECRET"),
+  pages: {
+    signIn: "/signin",
+  },
+  session: {
+    strategy: "jwt",
+  },
+  providers,
+  callbacks: {
     jwt({ token, user }) {
       if (user?.id) {
         token.id = user.id;
@@ -150,6 +198,14 @@ export const authConfig = {
       return session;
     },
   },
+  logger: {
+    error(error) {
+      console.error("Auth.js error:", error);
+    },
+    warn(code) {
+      console.warn("Auth.js warning:", code);
+    },
+  },
 } satisfies NextAuthConfig;
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
@@ -163,13 +219,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   ]);
 }
 
-type StoredAuthUser = {
-  id: string;
-  email: string;
-  name: string | null;
-};
-
 type GitHubProfile = {
+  id?: number | string | null;
   email: string | null;
   login?: string | null;
   name?: string | null;
@@ -182,67 +233,48 @@ type GitHubEmail = {
   verified: boolean;
 };
 
-async function toOAuthUser(input: {
-  email?: string | null;
-  name?: string | null;
-  image?: string | null;
-}) {
-  const email = normalizeEmail(input.email);
-
-  if (!email) {
-    throw new Error("OAuth provider did not return a usable email address.");
-  }
-
-  const storedUser = await findOrCreateOAuthUser({
-    email,
-    name: input.name,
-  });
-
-  if (!storedUser) {
-    throw new Error("OAuth user could not be stored.");
-  }
-
-  return {
-    id: storedUser.id,
-    email: storedUser.email,
-    name: storedUser.name ?? input.name ?? null,
-    image: input.image ?? null,
-  };
+class AuthStorageUnavailable extends CredentialsSignin {
+  code = "auth_storage_unavailable";
 }
 
-async function findOrCreateOAuthUser(input: {
-  email: string;
-  name?: string | null;
-}) {
-  const email = normalizeEmail(input.email);
+function getEnv(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
 
-  if (!email) {
-    return null;
+    if (value) {
+      return value;
+    }
   }
 
-  const prisma = getPrisma();
+  return undefined;
+}
+
+function getAuthAdapter() {
+  let prisma;
+
+  try {
+    prisma = getPrisma();
+  } catch (error) {
+    console.error("Auth adapter initialization failed:", formatAuthError(error));
+    return undefined;
+  }
+
   if (!prisma) {
-    return null;
+    return undefined;
   }
 
-  const name = input.name?.trim() || null;
-
-  const users = await withTimeout(
-    prisma.$queryRaw<StoredAuthUser[]>`
-      INSERT INTO "User" (id, email, name, "passwordHash", plan, "createdAt")
-      VALUES (${randomUUID()}, ${email}, ${name}, NULL, 'free', NOW())
-      ON CONFLICT (email) DO UPDATE
-      SET name = COALESCE("User".name, EXCLUDED.name)
-      RETURNING id, email, name
-    `,
-    10_000,
-  ).catch(() => []);
-
-  return users[0] ?? null;
+  return PrismaAdapter(
+    prisma as unknown as Parameters<typeof PrismaAdapter>[0],
+  );
 }
 
-function normalizeEmail(email: unknown) {
-  return typeof email === "string" && email.trim()
-    ? email.trim().toLowerCase()
-    : null;
+function formatAuthError(error: unknown) {
+  if (error instanceof DatabaseEnvError) {
+    return {
+      message: error.message,
+      issues: error.issues,
+    };
+  }
+
+  return error instanceof Error ? error.message : "Unknown error";
 }

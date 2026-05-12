@@ -10,17 +10,26 @@ import { Input } from "@/components/ui/input";
 
 type AuthFormProps = {
   mode: "signin" | "signup";
+  enabledOAuthProviders?: Partial<Record<OAuthProvider, boolean>>;
 };
 
 type OAuthProvider = "google" | "github";
 
-export function AuthForm({ mode }: AuthFormProps) {
+export function AuthForm({
+  mode,
+  enabledOAuthProviders = {},
+}: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/scans";
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    authErrorMessage(searchParams),
+  );
   const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
   const [isPending, startTransition] = useTransition();
+  const enabledProviders = (["google", "github"] as const).filter(
+    (provider) => enabledOAuthProviders[provider],
+  );
 
   async function handleOAuthSignIn(provider: OAuthProvider) {
     setError(null);
@@ -80,7 +89,10 @@ export function AuthForm({ mode }: AuthFormProps) {
       });
 
       if (result?.error) {
-        throw new Error("Email or password is incorrect.");
+        throw new Error(
+          authErrorMessageFromCode(result.code, result.error) ??
+            "Email or password is incorrect.",
+        );
       }
 
       router.push(input.callbackUrl);
@@ -96,29 +108,33 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      {mode === "signin" ? (
+      {mode === "signin" && enabledProviders.length ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              disabled={isPending || Boolean(oauthProvider)}
-              onClick={() => void handleOAuthSignIn("google")}
-            >
-              <span className="font-semibold">G</span>
-              {oauthProvider === "google" ? "Connecting..." : "Google"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              disabled={isPending || Boolean(oauthProvider)}
-              onClick={() => void handleOAuthSignIn("github")}
-            >
-              <span className="font-semibold">GH</span>
-              {oauthProvider === "github" ? "Connecting..." : "GitHub"}
-            </Button>
+            {enabledProviders.includes("google") ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={isPending || Boolean(oauthProvider)}
+                onClick={() => void handleOAuthSignIn("google")}
+              >
+                <span className="font-semibold">G</span>
+                {oauthProvider === "google" ? "Connecting..." : "Google"}
+              </Button>
+            ) : null}
+            {enabledProviders.includes("github") ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={isPending || Boolean(oauthProvider)}
+                onClick={() => void handleOAuthSignIn("github")}
+              >
+                <span className="font-semibold">GH</span>
+                {oauthProvider === "github" ? "Connecting..." : "GitHub"}
+              </Button>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-3 py-1">
@@ -195,4 +211,39 @@ export function AuthForm({ mode }: AuthFormProps) {
       </p>
     </form>
   );
+}
+
+function authErrorMessage(searchParams: URLSearchParams) {
+  return authErrorMessageFromCode(
+    searchParams.get("code"),
+    searchParams.get("error"),
+  );
+}
+
+function authErrorMessageFromCode(code?: string | null, error?: string | null) {
+  if (code === "auth_storage_unavailable") {
+    return "Account storage is currently unavailable. Please try again shortly.";
+  }
+
+  if (!error) {
+    return null;
+  }
+
+  if (error === "CredentialsSignin") {
+    return "Email or password is incorrect.";
+  }
+
+  if (error === "OAuthAccountNotLinked" || error === "AccountNotLinked") {
+    return "An account already exists for this email. Sign in with the original method first.";
+  }
+
+  if (error === "OAuthCallbackError" || error === "CallbackRouteError") {
+    return "OAuth sign-in could not be completed. Check that the provider account has a verified email address.";
+  }
+
+  if (error === "OAuthSignInError" || error === "Configuration") {
+    return "There is a problem with the server authentication configuration.";
+  }
+
+  return "Authentication failed. Please try again.";
 }

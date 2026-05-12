@@ -1,7 +1,10 @@
 import { Shield } from "lucide-react";
 import { Suspense } from "react";
+import { enabledOAuthProviders } from "@/auth";
 import { AuthForm } from "@/components/auth-form";
 import { Card, CardContent } from "@/components/ui/card";
+
+export const dynamic = "force-dynamic";
 
 export default function SignInPage() {
   return (
@@ -21,7 +24,10 @@ export default function SignInPage() {
           </div>
 
           <Suspense fallback={null}>
-            <AuthForm mode="signin" />
+            <AuthForm
+              mode="signin"
+              enabledOAuthProviders={enabledOAuthProviders}
+            />
           </Suspense>
         </CardContent>
       </Card>

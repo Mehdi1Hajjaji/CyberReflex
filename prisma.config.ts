@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+const SUPABASE_PROJECT_REF = "hrjdwtaccgthqzwrnkqt";
+const DIRECT_HOST = `db.${SUPABASE_PROJECT_REF}.supabase.co`;
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -29,6 +32,24 @@ function getRequiredDirectUrl() {
 
     if (!parsed.password || parsed.password === "[YOUR-PASSWORD]") {
       throw new Error("DIRECT_URL is missing the database password.");
+    }
+
+    if (parsed.hostname !== DIRECT_HOST) {
+      throw new Error(
+        `DIRECT_URL must use the direct Supabase host ${DIRECT_HOST}, not ${parsed.hostname}.`,
+      );
+    }
+
+    if (parsed.username !== "postgres") {
+      throw new Error("DIRECT_URL must use the direct postgres database user.");
+    }
+
+    if (parsed.port !== "5432") {
+      throw new Error("DIRECT_URL must use port 5432.");
+    }
+
+    if (parsed.searchParams.get("pgbouncer") === "true") {
+      throw new Error("DIRECT_URL must not include pgbouncer=true.");
     }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("DIRECT_URL")) {
